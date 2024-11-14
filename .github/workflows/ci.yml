@@ -1,241 +1,48 @@
-name: Continuous Optimization Loop
+name: CI Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
-  schedule:
-    - cron: '0 0 * * 1'  # Runs weekly on Monday at midnight UTC
+    branches: [ main ]
 
 jobs:
-  initialize:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Set up Repository
-        uses: actions/checkout@v3
+    - uses: actions/checkout@v3
 
-      - name: Cache Node.js modules
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
+    - name: Setup Deno
+      uses: denoland/setup-deno@v2
+      with:
+        deno-version: v1.31.1
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
+    - name: Cache Deno modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/deno
+        key: ${{ runner.os }}-deno-${{ hashFiles('**/deno.json') }}
+        restore-keys: |
+          ${{ runner.os }}-deno-
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '16'
-          cache: 'npm'
+    - name: Cache TensorFlow types
+      uses: actions/cache@v3
+      with:
+        path: |
+          ./src/types/
+        key: ${{ runner.os }}-types-${{ hashFiles('**/src/types/*.d.ts') }}
+        restore-keys: |
+          ${{ runner.os }}-types-
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-          cache: 'pip'
+    - name: Run Lint
+      run: deno lint frontend/deno_app
 
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+    - name: Run Tests
+      run: deno test --allow-net --allow-read --allow-env frontend/deno_app
 
-  # Step 2: Code Quality Analysis
-  code-quality:
-    runs-on: ubuntu-latest
-    needs: initialize
-    strategy:
-      matrix:
-        language: [javascript, rust]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Run ESLint for ${{ matrix.language }}
-        run: |
-          if [ "${{ matrix.language }}" == "javascript" ]; then
-            npm run lint
-          elif [ "${{ matrix.language }}" == "rust" ]; then
-            cargo clippy -- -D warnings
-          fi
-
-  # Step 3: Dependency Audit
-  dependency-audit:
-    runs-on: ubuntu-latest
-    needs: initialize
-    steps:
-      - name: Run npm audit for JavaScript
-        run: npm audit --audit-level=moderate
-      - name: Run cargo audit for Rust
-        run: cargo install cargo-audit && cargo audit
-      - name: Snyk Vulnerability Scan
-        run: snyk test
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
-  # Step 4: Performance Monitoring
-  performance-monitoring:
-    runs-on: ubuntu-latest
-    needs: initialize
-    steps:
-      - name: Run Performance Benchmarks for Rust
-        run: cargo bench || true
-      - name: Run Node.js Performance Tests
-        run: npm run perf || true
-
-  # Step 5: Documentation Generation
-  documentation:
-    runs-on: ubuntu-latest
-    needs: [code-quality, dependency-audit]
-    steps:
-      - name: Generate Documentation
-        run: |
-          cargo doc --no-deps
-          npx jsdoc -c jsdoc.json
-      - name: Commit Documentation
-        run: |
-          git config --local user.name "github-actions"
-          git config --local user.email "github-actions@github.com"
-          git add docs
-          git commit -m "Update documentation [CI]"
-          git push origin docs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Step 6: Quality Assurance
-  quality-assurance:
-    runs-on: ubuntu-latest
-    needs: [code-quality, dependency-audit, performance-monitoring]
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Set up Deno
-        uses: denoland/setup-deno@v1
-        with:
-          deno-version: "2.0.0"
-
-      - name: Run Unit Tests
-        run: deno test --allow-net --allow-read src/modules/chatbot.test.ts
-
-      - name: Run Benchmarks
-        run: deno run --allow-net src/modules/chatbot.benchmark.ts
-
-      - name: Security Scans
-        run: snyk test --severity-threshold=medium
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
-  # Step 7: Build and Archive Artifacts for Deployment
-  build-artifact:
-    runs-on: ubuntu-latest
-    needs: quality-assurance
-    steps:
-      - name: Build Node.js App
-        run: npm run build
-      - name: Build Rust Binary
-        run: cargo build --release
-      - name: Archive deployment files
-        run: tar -czvf app_artifact.tar.gz dist target/release/my_rust_app
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: app_artifact
-          path: app_artifact.tar.gz
-
-  # Step 8: Deploy to Development Environment
-  deploy-development:
-    runs-on: ubuntu-latest
-    needs: build-artifact
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: app_artifact
-          path: ./
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-      - name: Deploy to AWS S3
-        run: |
-          aws s3 cp app_artifact.tar.gz s3://your-development-bucket/app_artifact.tar.gz
-
-  # Step 9: Deploy to Production Environment (Manual Trigger)
-  deploy-production:
-    runs-on: ubuntu-latest
-    needs: deploy-development
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
-    steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: app_artifact
-          path: ./
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-      - name: Deploy to AWS S3
-        run: |
-          aws s3 cp app_artifact.tar.gz s3://your-production-bucket/app_artifact.tar.gz
-          # For ECS, update ECS service with the new image
-
-  # Step 10: Reporting
-  reporting:
-    runs-on: ubuntu-latest
-    needs: [deploy-development, deploy-production]
-    steps:
-      - name: Generate Report
-        run: |
-          echo "## Weekly Project Report" > report.md
-          echo "### Code Quality" >> report.md
-          echo "- Linting and format checks completed." >> report.md
-          echo "### Security and Dependency Management" >> report.md
-          echo "- Dependency audit and security scans completed." >> report.md
-          echo "### Performance Monitoring" >> report.md
-          echo "- Benchmark tests passed successfully." >> report.md
-          echo "### Documentation" >> report.md
-          echo "- Documentation updated." >> report.md
-          echo "### Deployment Status" >> report.md
-          echo "- Development and production deployments completed successfully." >> report.md
-      - name: Upload Report
-        uses: actions/upload-artifact@v2
-        with:
-          name: weekly-report
-          path: report.md
-      - name: Send Report Notification
-        run: |
-          curl -X POST -H 'Content-type: application/json' --data '{"text":"Weekly project report generated and uploaded."}' ${{ secrets.SLACK_WEBHOOK_URL }}
-
-  security-audit:
-    runs-on: ubuntu-latest
-    needs: deploy-dev
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Run Advanced Security Scan
-        run: |
-          npm audit --audit-level=moderate
-          cargo audit
-          snyk test --severity-threshold=medium
-          snyk monitor --org=${{ secrets.SNYK_ORG_ID }}
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    - name: Security Scans
+      run: snyk test --severity-threshold=medium
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}

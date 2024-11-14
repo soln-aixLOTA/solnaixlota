@@ -9,12 +9,12 @@
   "imports": {
     "@/": "./src/",
     "std/": "https://deno.land/std@0.204.0/",
-    "fresh/": "https://deno.land/x/fresh@1.6.1/",
-    "tensorflow/": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/"
+    "tensorflow/": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.esm.js"
   },
   "compilerOptions": {
     "strict": true,
     "allowJs": true,
-    "lib": ["deno.window", "dom"]
+    "lib": ["deno.window", "dom"],
+    "types": ["./src/types"]
   }
 } 

@@ -16,7 +16,19 @@ A comprehensive AI platform encompassing various domains such as:
 
 ## Getting Started
 
-1. **Clone the Repository**
+### Prerequisites
+
+Ensure you have met the following requirements before setting up the project:
+
+- **Docker:** Version 20.10 or higher
+- **Docker Compose:** Version 1.29 or higher
+- **Kubernetes (`kubectl`):** Version 1.20 or higher
+- **Python:** Version 3.8 or higher
+- **Node.js:** Version 14.x
+- **Go:** Version 1.16
+- **Rust:** Latest stable toolchain
+
+### 1. **Clone the Repository**
 
    ```bash
    git clone https://github.com/yourusername/ai-platform.git

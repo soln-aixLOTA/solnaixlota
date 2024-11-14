@@ -1,6 +1,7 @@
 import logging
 import subprocess
 import requests
+import shlex
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +32,16 @@ def handle_agi_incident(incident_details):
     # Implement advanced remediation steps here
     # For example, resetting AGI states, reinitializing components, etc.
     restart_agi_service()
+
+def execute_command(command_str):
+    try:
+        # Split the command string into arguments safely
+        args = shlex.split(command_str)
+        result = subprocess.run(args, capture_output=True, text=True, check=True)
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        # Handle errors appropriately
+        return f"An error occurred: {e}"
 
 if __name__ == "__main__":
     # Example incident

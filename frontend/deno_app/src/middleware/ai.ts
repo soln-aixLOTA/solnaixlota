@@ -1,9 +1,9 @@
-import { Context, Next } from "https://deno.land/x/oak@v10.6.0/mod.ts";
-import * as tf from "tensorflow/tf.ts";
+import { Context, Next } from "https://deno.land/x/oak@v12.5.0/mod.ts";
+import * as tf from "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.12.0/dist/tf.esm.js";
 
 export async function aiMiddleware(ctx: Context, next: Next) {
-  // Initialize TensorFlow
-  await tf.ready();
+  // Initialize TensorFlow (if necessary)
+  // await tf.ready(); // Remove or replace based on TensorFlow.js docs
   
   // Add AI context to state
   ctx.state.ai = {

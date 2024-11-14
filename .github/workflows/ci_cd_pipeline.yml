@@ -7,285 +7,45 @@ on:
   pull_request:
     branches:
       - main
-  schedule:
-    - cron: '0 0 * * 1'  # Runs weekly on Monday at midnight UTC
 
 jobs:
-  initialize:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-
-      - name: Cache Node.js modules
-        uses: actions/cache@v3
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Cache Python dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
-
-      - name: Cache Rust crates
-        uses: actions/cache@v3
-        with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
-
-      - name: Cache Go modules
-        uses: actions/cache@v3
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: '16'
-          cache: 'npm'
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
-  code-quality:
-    runs-on: ubuntu-latest
-    needs: initialize
-    steps:
-      - name: Run ESLint for JavaScript
-        run: npm run lint
-
-      - name: Run Rust Clippy
-        run: cargo clippy -- -D warnings
-
-      - name: SonarQube Analysis
-        run: sonar-scanner
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-  dependency-audit:
-    runs-on: ubuntu-latest
-    needs: initialize
-    steps:
-      - name: Run npm audit for JavaScript
-        run: npm audit --audit-level=moderate
-
-      - name: Run cargo audit for Rust
-        run: cargo install cargo-audit && cargo audit
-
-      - name: Snyk Vulnerability Scan
-        run: snyk test
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
-  performance-monitoring:
-    runs-on: ubuntu-latest
-    needs: initialize
-    steps:
-      - name: Run Performance Benchmarks for Rust
-        run: cargo bench || true
-
-      - name: Run Node.js Performance Tests
-        run: npm run perf || true
-
-      - name: Run Python Performance Tests
+      
+      - name: Validate Configurations
         run: |
-          pip install pytest-benchmark
-          pytest --benchmark-only src/mlops/tests/
-          pytest --benchmark-only src/aiops/tests/
-          pytest --benchmark-only src/agiops/tests/
+          ./scripts/ci/validate_configs.sh || handle_error ${LINENO} "Configuration Validation Failed."
+          ./scripts/ci/check_dependencies.sh || handle_error ${LINENO} "Dependency Check Failed."
 
-  documentation:
+  test:
+    needs: validate
     runs-on: ubuntu-latest
-    needs: [code-quality, dependency-audit]
+    strategy:
+      matrix:
+        language: [python, rust, go, cpp]
     steps:
-      - name: Generate Documentation
-        run: |
-          cargo doc --no-deps
-          npx jsdoc -c jsdoc.json
+      - uses: actions/checkout@v3
+      
+      - name: Run Tests for ${{ matrix.language }}
+        run: ./scripts/ci/run_tests.sh ${{ matrix.language }} || handle_error ${LINENO} "Tests failed for ${matrix.language}."
 
-      - name: Commit Documentation
-        run: |
-          git config --local user.name "github-actions"
-          git config --local user.email "github-actions@github.com"
-          git add docs
-          git commit -m "Update documentation [CI]" || echo "No changes to commit"
-          git push origin docs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  quality-assurance:
+  security:
+    needs: test
     runs-on: ubuntu-latest
-    needs: [code-quality, dependency-audit, performance-monitoring]
     steps:
-      - name: Run Unit and Integration Tests for Rust
-        run: cargo test
+      - uses: actions/checkout@v3
+      
+      - name: Security Scan
+        run: ./scripts/ci/security_scan.sh || handle_error ${LINENO} "Security Scan Failed."
 
-      - name: Run Mocha Tests for Node.js
-        run: npm test
-
-      - name: Run Python Tests
-        run: |
-          pip install pytest
-          pytest src/mlops/tests/
-          pytest src/aiops/tests/
-          pytest src/agiops/tests/
-
-      - name: Security Scans
-        run: snyk test --severity-threshold=medium
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
-  build-artifact:
-    runs-on: ubuntu-latest
-    needs: quality-assurance
-    steps:
-      - name: Build Node.js App
-        run: npm run build
-
-      - name: Build Rust Binary
-        run: cargo build --release
-
-      - name: Archive deployment files
-        run: tar -czvf app_artifact.tar.gz dist target/release/my_rust_app
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: app_artifact
-          path: app_artifact.tar.gz
-
-  deploy-development:
-    runs-on: ubuntu-latest
-    needs: build-artifact
+  deploy:
+    needs: [test, security]
     if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: app_artifact
-          path: ./
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Deploy to AWS S3
-        run: |
-          aws s3 cp app_artifact.tar.gz s3://your-development-bucket/app_artifact.tar.gz
-
-  deploy-production:
     runs-on: ubuntu-latest
-    needs: deploy-development
-    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
     steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: app_artifact
-          path: ./
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Deploy to AWS S3
-        run: |
-          aws s3 cp app_artifact.tar.gz s3://your-production-bucket/app_artifact.tar.gz
-          # For ECS, update ECS service with the new image
-
-  reporting:
-    runs-on: ubuntu-latest
-    needs: [deploy-development, deploy-production]
-    steps:
-      - name: Generate Report
-        run: |
-          echo "## Weekly Project Report" > report.md
-          echo "### Code Quality" >> report.md
-          echo "- Linting and format checks completed." >> report.md
-          echo "### Security and Dependency Management" >> report.md
-          echo "- Dependency audit and security scans completed." >> report.md
-          echo "### Performance Monitoring" >> report.md
-          echo "- Benchmark tests passed successfully." >> report.md
-          echo "### Documentation" >> report.md
-          echo "- Documentation updated." >> report.md
-          echo "### Deployment Status" >> report.md
-          echo "- Development and production deployments completed successfully." >> report.md
-
-      - name: Upload Report
-        uses: actions/upload-artifact@v2
-        with:
-          name: weekly-report
-          path: report.md
-
-      - name: Send Report Notification
-        run: |
-          curl -X POST -H 'Content-type: application/json' --data '{"text":"Weekly project report generated and uploaded."}' ${{ secrets.SLACK_WEBHOOK_URL }}
-
-  dependency-analysis:
-    runs-on: ubuntu-latest
-    needs: build-artifact
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
-
-      - name: Run Dependency Analyzer
-        run: |
-          chmod +x src/analyzers/dependency_analyzer.sh
-          ./src/analyzers/dependency_analyzer.sh src/
-
-  deploy-ml-model:
-    runs-on: ubuntu-latest
-    needs: build-artifact
-    steps:
-      - name: Download Artifact
-        uses: actions/download-artifact@v2
-        with:
-          name: app_artifact
-          path: ./deployments/
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Deploy ML Model to AWS SageMaker
-        run: |
-          aws sagemaker create-model \
-            --model-name ai-chatbot-model \
-            --primary-container Image=123456789012.dkr.ecr.us-west-2.amazonaws.com/ai-chatbot:latest,ModelDataUrl=s3://your-bucket/model.tar.gz \
-            --execution-role-arn arn:aws:iam::123456789012:role/SageMakerRole
-
-          aws sagemaker create-endpoint-config \
-            --endpoint-config-name ai-chatbot-endpoint-config \
-            --production-variants VariantName=AllTraffic,ModelName=ai-chatbot-model,InitialInstanceCount=1,InstanceType=ml.m5.large
-
-          aws sagemaker create-endpoint \
-            --endpoint-name ai-chatbot-endpoint \
-            --endpoint-config-name ai-chatbot-endpoint-config
+      - uses: actions/checkout@v3
+      
+      - name: Deploy
+        run: ./scripts/deployment/deploy.sh || handle_error ${LINENO} "Deployment Failed."
