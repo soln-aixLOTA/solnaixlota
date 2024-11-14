@@ -30,7 +30,7 @@ dotenv = "0.15"
 
 # Authentication
 jsonwebtoken = "8.3"
-bcrypt = "0.10"
+bcrypt = "0.15"
 
 [lib]
 name = "ai_platform"
