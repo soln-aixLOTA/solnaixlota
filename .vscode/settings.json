@@ -1,0 +1,5 @@
+{
+    "java.compile.nullAnalysis.mode": "automatic",
+    "remote.autoForwardPortsFallback": 0,
+    "cmake.sourceDirectory": "/home/dislove/文档/AI/scripts/src/cpp_module/build/_deps/catch2-subbuild"
+}

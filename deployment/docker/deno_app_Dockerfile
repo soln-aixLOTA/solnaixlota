@@ -1,0 +1,12 @@
+FROM denoland/deno:alpine-1.30.3
+
+WORKDIR /app
+
+# Cache dependencies
+COPY frontend/deno_app/deno.json .
+RUN deno cache frontend/deno_app/src/main.ts
+
+# Copy source code
+COPY frontend/deno_app/ .
+
+CMD ["deno", "run", "--allow-net", "src/main.ts"] 

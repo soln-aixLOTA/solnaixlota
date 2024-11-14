@@ -1,0 +1,11 @@
+groups:
+  - name: AIPlatformAlerts
+    rules:
+      - alert: HighCPUUsage
+        expr: cpu_usage_seconds_total > 0.8
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage has exceeded 80% for more than 2 minutes." 
