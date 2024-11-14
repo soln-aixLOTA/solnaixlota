@@ -1,22 +1,11 @@
-# Use official Python image as base
-FROM python:3.8-slim
+FROM eclipse-temurin:17-jdk-focal
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Set work directory
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# Copy dependencies
+COPY target/scala-2.12/lib/ /app/lib/
+COPY target/scala-2.12/ai-service.jar /app/
 
-# Copy project
-COPY . .
-
-# Expose ports
-EXPOSE 5000 7000
-
-# Run the application
-CMD ["python", "app.py"] 
+# Set classpath and main class
+ENV CLASSPATH="/app/lib/*:/app/ai-service.jar"
+ENTRYPOINT ["java", "-cp", "${CLASSPATH}", "com.example.ScalaService"] 

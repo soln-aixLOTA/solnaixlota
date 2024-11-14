@@ -41,10 +41,10 @@ services:
       - grafana-storage:/var/lib/grafana
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus
     container_name: prometheus
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - /workspaces/AI/prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
     networks:
