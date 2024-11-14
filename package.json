@@ -1,0 +1,21 @@
+{
+  "scripts": {
+    "lint:python": "flake8 src/ tests/",
+    "format:python": "black src/ tests/",
+    "lint:javascript": "eslint . --ext .js,.ts",
+    "format:javascript": "prettier --write .",
+    "lint:rust": "cargo clippy -- -D warnings",
+    "format:rust": "cargo fmt -- --check",
+    "lint:go": "golint ./...",
+    "format:go": "gofmt -w .",
+    "lint:cpp": "cppcheck --enable=all src/",
+    "format:cpp": "clang-format -i src/**/*.cpp src/**/*.h",
+    "lint:deno": "deno lint",
+    "format:deno": "deno fmt",
+    "lint:shell": "shellcheck install_dependencies.sh ai_platform_setup.sh static_analysis.sh complexity_analyzer.sh dependency_analyzer.sh automated_deploy.sh",
+    "lint:yaml": "yamllint .",
+    "lint:json": "jsonlint ./*.json",
+    "lint": "npm run lint:python && npm run lint:javascript && npm run lint:rust && npm run lint:go && npm run lint:cpp && npm run lint:deno && npm run lint:shell && npm run lint:yaml && npm run lint:json",
+    "format": "npm run format:python && npm run format:javascript && npm run format:rust && npm run format:go && npm run format:cpp && npm run format:deno"
+  }
+} 
