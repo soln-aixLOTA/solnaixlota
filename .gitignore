@@ -52,3 +52,4 @@ logs/
 # Virtual Environment
 .venv/
 
+node_modules
